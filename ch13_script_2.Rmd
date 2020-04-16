@@ -50,6 +50,28 @@ Interpret the coefficient of `income`.
 
 Write a sentence to your smart-but-not-mathematical boss which explains the association of income with preference for the Democratic candidate. Include a notion of uncertainty.
 
+```{r Scene 1, echo = FALSE}
+
+# Save model specification
+
+logistic_mod <- logistic_reg() %>%
+  set_engine("glm")
+
+logistic_fit <- fit(logistic_mod,
+                    factor(vote) ~ ideology + income + gender + race,
+                    data = nes)
+
+logistic_fit$fit %>% 
+  tidy(conf.int = TRUE) %>% 
+  select(term, estimate, conf.low, conf.high)
+
+```
+
+Holding all other variables constant, an increase in 1 unit of income is associated with a -0.21517677 / 4 change in probability to vote for a democratic candidate. 
+
+We are 95% confident that increasing the income level by 1 unit for a given individual has an effect on probability of voting for a democratic candidate between -.2718516/4 and -0.15860716/4. 
+
+If we divide the US population
 
 
 # Scene 2
@@ -66,8 +88,27 @@ Write two sentences explaining to your smart-but-not-mathematical boss what the 
 
 Optional: Can you write a simple dplr pipe which does, more or less, what the CART is doing, at least for the first node, and then confirms the numbers in the plot?
 
+```{r Scene 2, echo = FALSE}
 
+tree_mod <- decision_tree() %>%
+  set_engine("rpart",
+             model = TRUE) %>%
+  set_mode("classification")
 
+nes_tree <- fit(tree_mod,
+                factor(vote) ~ ideology + income + gender + race, 
+                data = nes)
+
+nes_tree$fit %>% 
+    prp(extra = 6, varlen = 0, faclen = 0)
+
+nes %>% filter(! ideology >= 4) %>% summarise(total = n(), dems =sum(vote == "Democratic")) %>% mutate(per=dems/total)
+
+```
+
+If liberal (123), 79% will vote democrat
+
+If not liberal, ???????
 
 # Scene 3
 
@@ -81,7 +122,28 @@ How many trees did the forest use? Would we get better results if we used a diff
 
 What is OOB error?
 
+```{r Scene 3, echo = FALSE}
 
+forest_mod <- rand_forest() %>%
+  set_engine("randomForest") %>%
+  set_mode("classification")
+
+house_forest <- fit(forest_mod,
+                    factor(vote) ~ ideology + income + gender + race, 
+                     data = nes)
+
+house_forest
+
+tibble(`Error rate` = house_forest$fit$err.rate[, "OOB"],
+       Trees = 1:500) %>%
+  ggplot(aes(x = Trees, y = `Error rate`)) +
+  geom_line() +
+  theme_classic()
+
+```
+500 Trees. Maybe margnially better if we used more trees but it largely plateaus by 500 trees
+
+The OOB error is 25.3%
 
 # Scene 4
 
@@ -100,6 +162,18 @@ Accuracy = (Actual 1 as 1 + Actual 0 as 0) / n
 Sensitivity = The proportion of actual 1s classified as 1
 Specificity = The proportion of actual 0s classified as 0
 
+```{r Accuracy of models}
+nes_vote_predictions <- nes %>% 
+  mutate(logistics = predict(logistic_fit, new_data = nes) %>%  pull(.pred_class),
+         tree = predict(nes_tree, new_data = nes) %>% pull(.pred_class),
+         forest = predict(house_forest, new_data = nes) %>%  pull(.pred_class)) %>% 
+  select(vote, logistics, tree, forest) 
+
+tibble(logistics = mean(nes_vote_predictions$logistics == nes_vote_predictions$vote),
+       tree = mean(nes_vote_predictions$tree == nes_vote_predictions$vote),
+       forest = mean(nes_vote_predictions$forest == nes_vote_predictions$vote))
+
+```
 
 
 # Challenge Problem
